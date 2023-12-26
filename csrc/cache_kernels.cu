@@ -183,8 +183,8 @@ __global__ void reshape_and_cache_kernel(
                                   + head_idx * head_size * block_size
                                   + head_offset * block_size
                                   + block_offset;
-    scalar_t tgt_key = __ldg(&key[src_key_idx]);
-    scalar_t tgt_value = __ldg(&value[src_value_idx]);
+    scalar_t tgt_key = VLLM_LDG(&key[src_key_idx]);
+    scalar_t tgt_value = VLLM_LDG(&value[src_value_idx]);
     if constexpr (enable_fp8_kv_cache) {
       key_cache[tgt_key_idx] = vec_conversion<uint8_t, scalar_t>(tgt_key);
       value_cache[tgt_value_idx] = vec_conversion<uint8_t, scalar_t>(tgt_value);
@@ -408,4 +408,52 @@ void gather_cached_kv(
         block_size,
         x);
     });
+}
+
+namespace vllm {
+
+template<typename scalar_t>
+__global__ void convert_to_fp8_kernel(
+  const scalar_t* __restrict__ src_key_cache,     // [num_blocks, num_heads, head_size/x, block_size, x]
+  const scalar_t* __restrict__ src_value_cache,   // [num_blocks, num_heads, head_size, block_size]
+  uint8_t* __restrict__ dst_key_cache,            // [num_blocks, num_heads, head_size/x, block_size, x]
+  uint8_t* __restrict__ dst_value_cache,          // [num_blocks, num_heads, head_size, block_size]
+  const int64_t block_stride) {
+  const int64_t block_idx = blockIdx.x;
+  for (int i = threadIdx.x; i < block_stride; i += blockDim.x) {
+    dst_key_cache[i] = vec_conversion<uint8_t, scalar_t>(VLLM_LDG(&src_key_cache[i]));
+    dst_value_cache[i] = vec_conversion<uint8_t, scalar_t>(VLLM_LDG(&src_value_cache[i]));
+  }
+}
+
+} // namespace vllm
+
+#define CALL_CONVERT_TO_FP8(T)                                \
+  vllm::convert_to_fp8_kernel<T><<<grid, block, 0, stream>>>( \
+    reinterpret_cast<T*>(src_key_cache.data_ptr()),                                                      \
+    reinterpret_cast<T*>(src_value_cache.data_ptr()),                                                    \
+    reinterpret_cast<uint8_t*>(dst_key_cache.data_ptr()),                                             \
+    reinterpret_cast<uint8_t*>(dst_value_cache.data_ptr()), \
+    block_stride);
+
+void convert_to_fp8(
+  torch::Tensor& src_key_cache,     // [num_blocks, num_heads, head_size/x, block_size, x]
+  torch::Tensor& src_value_cache,   // [num_blocks, num_heads, head_size, block_size]
+  torch::Tensor& dst_key_cache,     // [num_blocks, num_heads, head_size/x, block_size, x]
+  torch::Tensor& dst_value_cache)   // [num_blocks, num_heads, head_size, block_size]
+{
+  int num_blocks = src_value_cache.size(0);
+  int block_stride = src_value_cache.stride(0);
+
+  dim3 grid(num_blocks);
+  dim3 block(std::min(block_stride, 512));
+  const cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+
+  if (src_value_cache.dtype() == at::ScalarType::Float) {
+    CALL_CONVERT_TO_FP8(float);
+  } else if (src_value_cache.dtype() == at::ScalarType::Half) {
+    CALL_CONVERT_TO_FP8(uint16_t);
+  } else if (src_value_cache.dtype() == at::ScalarType::BFloat16) {
+    CALL_CONVERT_TO_FP8(__nv_bfloat16);
+  }
 }

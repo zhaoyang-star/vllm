@@ -13,6 +13,7 @@ HEAD_SIZES = [64, 80, 96, 112, 128, 256]
 BLOCK_SIZES = [8, 16, 32]
 NUM_BLOCKS = [1024, 36000]  # Arbitrary values for testing
 NUM_MAPPINGS = [256]  # Arbitrary values for testing
+USE_FP8_KV_CACHE = [False, True]
 SEEDS = [0]
 
 
@@ -141,6 +142,47 @@ def test_reshape_and_cache(
         block_offset = block_offsets[i]
         cloned_key_cache[block_idx, :, :, block_offset, :] = reshaped_key[i]
         cloned_value_cache[block_idx, :, :, block_offset] = value[i]
+
+    assert torch.allclose(key_cache, cloned_key_cache)
+    assert torch.allclose(value_cache, cloned_value_cache)
+
+
+@pytest.mark.parametrize("num_heads", NUM_HEADS)
+@pytest.mark.parametrize("head_size", HEAD_SIZES)
+@pytest.mark.parametrize("block_size", BLOCK_SIZES)
+@pytest.mark.parametrize("num_blocks", NUM_BLOCKS)
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("use_fp8_kv_cache", USE_FP8_KV_CACHE)
+@pytest.mark.parametrize("seed", SEEDS)
+@torch.inference_mode()
+def test_fp8_cache(
+    kv_cache_factory,
+    num_heads: int,
+    head_size: int,
+    block_size: int,
+    num_blocks: int,
+    dtype: torch.dtype,
+    seed: int,
+) -> None:
+    random.seed(seed)
+    torch.random.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+
+    # Create the KV caches.
+    key_caches, value_caches = kv_cache_factory(num_blocks, block_size, 1,
+                                                num_heads, head_size, dtype,
+                                                seed)
+    key_cache, value_cache = key_caches[0], value_caches[0]
+
+    # Clone the KV caches.
+    cloned_key_cache = key_cache.clone()
+    cloned_value_cache = value_cache.clone()
+
+    # Quantize to fp8, then dequantize back.
+    converted_key_cache = torch.empty_like(key_cache, dtype=torch.uint8)
+    converted_value_cache = torch.empty_like(value_cache, dtype=torch.uint8)
+    cache_ops.convert_to_fp8(key_cache, value_cache, converted_key_cache, converted_value_cache)
+    cache_ops.convert_from_fp8(converted_key_cache, converted_value_cache, key_cache, value_cache, )
 
     assert torch.allclose(key_cache, cloned_key_cache)
     assert torch.allclose(value_cache, cloned_value_cache)

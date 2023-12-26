@@ -712,9 +712,8 @@ void paged_attention_v1(
   int block_size,
   int max_context_len,
   const c10::optional<torch::Tensor>& alibi_slopes,
-  const c10::optional<bool> enable_fp8_kv_cache) {
-  const auto fp8_kv_cache = enable_fp8_kv_cache.value_or(false);
-  if (fp8_kv_cache) {
+  const bool enable_fp8_kv_cache) {
+  if (enable_fp8_kv_cache) {
     if (query.dtype() == at::ScalarType::Float) {
       CALL_V1_LAUNCHER_BLOCK_SIZE(float, uint8_t, true);
     } else if (query.dtype() == at::ScalarType::Half) {
@@ -903,9 +902,8 @@ void paged_attention_v2(
   int block_size,
   int max_context_len,
   const c10::optional<torch::Tensor>& alibi_slopes,
-  const c10::optional<bool> enable_fp8_kv_cache) {
-  const auto fp8_kv_cache = enable_fp8_kv_cache.value_or(false);
-  if (fp8_kv_cache) {
+  const bool enable_fp8_kv_cache) {
+  if (enable_fp8_kv_cache) {
     if (query.dtype() == at::ScalarType::Float) {
       CALL_V2_LAUNCHER_BLOCK_SIZE(float, uint8_t, true);
     } else if (query.dtype() == at::ScalarType::Half) {
