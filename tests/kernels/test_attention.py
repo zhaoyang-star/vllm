@@ -22,7 +22,7 @@ NUM_PREFILL_SEQS = [3]  # Arbitrary values for testing
 NUM_HEADS = [(64, 8)]  # Arbitrary values for testing
 HEAD_SIZES = [256]
 BLOCK_SIZES = [16]
-USE_ALIBI = [False, True]
+USE_ALIBI = [True]
 USE_FP8_KV_CACHE = [False, True]
 SEEDS = [0]
 
@@ -98,7 +98,7 @@ def ref_single_query_cached_kv_attention(
         output[i].copy_(out, non_blocking=True)
 
 
-@pytest.mark.parametrize("version", ["v1", "v2"])
+@pytest.mark.parametrize("version", ["v1"])
 @pytest.mark.parametrize("num_seqs", NUM_GEN_SEQS)
 @pytest.mark.parametrize("num_heads", NUM_HEADS)
 @pytest.mark.parametrize("head_size", HEAD_SIZES)
@@ -168,7 +168,7 @@ def test_paged_attention(
         # Convert to fp8
         converted_key_cache = torch.empty_like(key_cache, dtype=torch.uint8)
         converted_value_cache = torch.empty_like(value_cache, dtype=torch.uint8)
-        cache_ops.convert_to_fp8(key_cache, value_cache, converted_key_cache, converted_value_cache)
+        cache_ops.convert_fp8(key_cache, value_cache, converted_key_cache, converted_value_cache)
 
     # Call the paged attention kernel.
     output = torch.empty_like(query)

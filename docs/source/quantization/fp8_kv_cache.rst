@@ -3,7 +3,7 @@
 FP8 KV Cache
 ==================
 
-The int8/int4 Per Head quantization scheme requires additional scale GPU memory storage, which reduces the expected GPU memory benefits.
+The int8/int4 quantization scheme requires additional scale GPU memory storage, which reduces the expected GPU memory benefits.
 The FP8 data format retains 2~3 mantissa bits and can directly convert float/fp16/bflaot16 and fp8 to each other,
 which not only simplifies the quantization and dequantization operations, but also does not require additional scale GPU memory storage.
 

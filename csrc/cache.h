@@ -30,7 +30,7 @@ void gather_cached_kv(
   torch::Tensor& slot_mapping);
 
 // Just for unittest
-void convert_to_fp8(
+void convert_fp8(
   torch::Tensor& src_key_cache,
   torch::Tensor& src_value_cache,
   torch::Tensor& dst_key_cache,
